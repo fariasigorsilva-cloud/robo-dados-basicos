@@ -1,32 +1,13 @@
-name: Build Windows EXE
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
+- name: Build EXE
         run: |
-          pip install pyinstaller requests selenium
-
-      - name: Build EXE
-        run: |
-          pyinstaller --onefile --noconsole --name "Dados Basicos AGU" app_dados_basicos.py
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Dados-Basicos-AGU-Windows
-          path: dist/Dados Basicos AGU.exe
+          pyinstaller --onefile --noconsole `
+            --hidden-import selenium.webdriver.chrome.webdriver `
+            --hidden-import selenium.webdriver.chrome.options `
+            --hidden-import selenium.webdriver.chrome.service `
+            --hidden-import selenium.webdriver.common.by `
+            --hidden-import selenium.webdriver.support.ui `
+            --hidden-import selenium.webdriver.support.expected_conditions `
+            --hidden-import selenium.webdriver.remote.webdriver `
+            --hidden-import selenium.webdriver.remote.remote_connection `
+            --name "Dados Basicos AGU" `
+            app_dados_basicos.py
