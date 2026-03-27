@@ -80,8 +80,23 @@ _estado = {
     "contadores":   {"alterados": 0, "pulados": 0, "falhas": 0},
     "erro":         None,
 }
-_driver = None
-_lock   = threading.Lock()
+_driver       = None
+_lock         = threading.Lock()
+server        = None   # preenchido em __main__; acessado pela rota /encerrar
+_ultimo_ping  = None   # None = ainda não recebeu o primeiro /ping
+_PING_TIMEOUT = 15     # segundos sem ping → encerrar
+
+
+def _watchdog():
+    """Encerra o servidor se o browser parar de enviar /ping por mais de _PING_TIMEOUT s."""
+    while True:
+        time.sleep(5)
+        if _ultimo_ping is None:
+            continue   # browser ainda não abriu
+        if time.time() - _ultimo_ping > _PING_TIMEOUT:
+            if server is not None:
+                server.shutdown()
+            break
 
 def _log(msg: str):
     with _lock:
@@ -554,6 +569,17 @@ input[type=text]::placeholder{color:var(--muted)}
 
 /* ── Divider ── */
 .div{height:1px;background:var(--border);margin:8px 0}
+
+/* ── Botão Encerrar (fixo) ── */
+.btn-encerrar{
+  position:fixed;top:18px;right:18px;z-index:200;
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);
+  color:#f87171;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;
+  padding:7px 14px;border-radius:10px;cursor:pointer;transition:all .15s;
+}
+.btn-encerrar:hover{background:rgba(248,113,113,.18);border-color:rgba(248,113,113,.4)}
+.btn-encerrar:disabled{opacity:.5;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -681,6 +707,8 @@ input[type=text]::placeholder{color:var(--muted)}
   </div>
 
 </div>
+
+<button class="btn-encerrar" id="btn-enc" onclick="encerrar(this)">✕&nbsp; Encerrar</button>
 
 <div class="toast" id="toast"></div>
 
@@ -873,6 +901,15 @@ function pollEstado() {
   });
 }
 
+// ── Heartbeat (mantém servidor vivo enquanto browser está aberto) ──
+setInterval(function() { fetch('/ping').catch(function(){}); }, 5000);
+
+// ── Encerrar (fallback explícito) ─────────────────────────────
+function encerrar(btn) {
+  if (btn) btn.disabled = true;
+  fetch('/encerrar').catch(function(){}).finally(function() { window.close(); });
+}
+
 // ── Animação de número ────────────────────────────────────────
 var _prevNums = {};
 function animNum(id, alvo) {
@@ -963,6 +1000,15 @@ class Handler(BaseHTTPRequestHandler):
             ).start()
             self._json({"ok": True})
 
+        elif path == "/ping":
+            global _ultimo_ping
+            _ultimo_ping = time.time()
+            self._json({"ok": True})
+
+        elif path == "/encerrar":
+            self._json({"ok": True})
+            threading.Timer(0.5, server.shutdown).start()
+
         else:
             self.send_response(404)
             self.end_headers()
@@ -977,8 +1023,10 @@ if __name__ == "__main__":
     url    = f"http://127.0.0.1:{PORT}"
     print(f"✅ Dados Básicos AGU · {url}")
     print("   Feche esta janela para encerrar.")
+    threading.Thread(target=_watchdog, daemon=True).start()
     threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nEncerrado.")
+        pass
+    print("\nEncerrado.")
