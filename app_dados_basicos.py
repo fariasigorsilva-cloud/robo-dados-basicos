@@ -354,7 +354,7 @@ def _processar_tarefa(session, tarefa, i, total, setor_destino, dry_run, contado
             _log("  ✅ Alterado com sucesso.")
             contadores["alterados"] += 1
         else:
-            _log(f"  ❌ Falha HTTP {r2.status_code}: {r2.text[:200]}")
+            _log(f"  ❌ Falha HTTP {r2.status_code}")
             contadores["falhas"] += 1
 
     except Exception as e:
@@ -709,6 +709,10 @@ input[type=text]::placeholder{color:var(--muted)}
 </div>
 
 <button class="btn-encerrar" id="btn-enc" onclick="encerrar(this)">✕&nbsp; Encerrar</button>
+
+<p style="text-align:center;font-size:11px;color:#334155;margin-top:32px;letter-spacing:.04em">
+  Projeto em andamento &nbsp;·&nbsp; Desenvolvimento: Igor Farias
+</p>
 
 <div class="toast" id="toast"></div>
 
