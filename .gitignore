@@ -1,0 +1,18 @@
+# Runtime
+.migracao_done.json
+
+# Build artifacts
+dist/
+build/
+*.spec
+__pycache__/
+*.pyc
+
+# Zips gerados
+*.zip
+
+# Claude
+.claude/
+
+# macOS
+.DS_Store

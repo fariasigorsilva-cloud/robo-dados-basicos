@@ -6,6 +6,15 @@ REM ─────────────────────────�
 
 echo Instalando dependencias...
 pip install requests selenium pyinstaller
+if %errorlevel% neq 0 (
+  echo ERRO ao instalar dependencias.
+  pause
+  exit /b %errorlevel%
+)
+
+REM Usar icone se existir na pasta
+set ICON_FLAG=
+if exist "icon.ico" set ICON_FLAG=--icon "icon.ico"
 
 echo.
 echo Compilando aplicativo...
@@ -22,6 +31,7 @@ pyinstaller ^
   --hidden-import requests ^
   --hidden-import requests.adapters ^
   --hidden-import urllib3 ^
+  %ICON_FLAG% ^
   app_dados_basicos.py
 
 if %errorlevel% neq 0 (

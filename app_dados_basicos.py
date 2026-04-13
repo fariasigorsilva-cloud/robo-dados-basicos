@@ -72,13 +72,18 @@ _TOKEN_SCRIPTS = [
 
 # ── Estado global ─────────────────────────────────────────────
 _estado = {
-    "fase":         "idle",   # idle | capturando | conectado | executando | concluido | erro
-    "token":        None,
-    "id_usuario":   None,
-    "nome_usuario": None,
-    "log":          [],
-    "contadores":   {"alterados": 0, "pulados": 0, "falhas": 0},
-    "erro":         None,
+    "fase":               "idle",   # idle | capturando | conectado | executando | concluido | erro
+    "token":              None,
+    "id_usuario":         None,
+    "nome_usuario":       None,
+    "log":                [],
+    "contadores":         {"alterados": 0, "pulados": 0, "falhas": 0},
+    "erro":               None,
+    # lotação do usuário — preenchidos após captura do token
+    "lotacao_unidade_id":   None,
+    "lotacao_unidade_nome": None,
+    "lotacao_setor_id":     None,
+    "lotacao_setor_nome":   None,
 }
 _driver       = None
 _lock         = threading.Lock()
@@ -165,6 +170,31 @@ def _descobrir_usuario(token: str):
             continue
     return None, None
 
+def _descobrir_lotacao(token: str):
+    """Tenta extrair unidade e setor de lotação do usuário via API."""
+    import requests as req
+    headers  = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    populate = urllib.parse.quote(json.dumps(["lotacaoPrincipal", "setor", "unidade"]))
+    for ep in ["/v1/usuario/me", "/v1/usuario/perfil"]:
+        try:
+            r = req.get(f"{BASE_URL}{ep}?populate={populate}", headers=headers, timeout=10)
+            if r.status_code != 200:
+                continue
+            d = r.json()
+            # tenta vários caminhos possíveis na resposta
+            lotacao = (d.get("lotacaoPrincipal") or d.get("lotacao") or {})
+            setor   = (lotacao.get("setor") or d.get("setorAtual") or d.get("setor") or {})
+            unidade = (setor.get("unidade") or lotacao.get("unidade") or d.get("unidade") or {})
+            s_id    = setor.get("id")
+            s_nome  = setor.get("nome") or setor.get("sigla") or ""
+            u_id    = unidade.get("id")
+            u_nome  = unidade.get("nome") or unidade.get("sigla") or ""
+            if s_id or u_id:
+                return u_id, u_nome, s_id, s_nome
+        except Exception:
+            continue
+    return None, None, None, None
+
 def _extrair_id(valor):
     if valor is None:
         return None
@@ -185,6 +215,7 @@ def _montar_payload(dados: dict, setor: int) -> dict:
             p[c] = _extrair_id(dados[c])
     p["setorAtual"] = setor
     return p
+
 
 # ── Threads ───────────────────────────────────────────────────
 
@@ -231,8 +262,18 @@ def _thread_capturar_token():
                 _estado["fase"] = "erro"
                 _estado["erro"] = "ID do usuário não encontrado no token."
             return
+        u_id, u_nome, s_id, s_nome = _descobrir_lotacao(token)
         with _lock:
-            _estado.update({"token": token, "id_usuario": id_u, "nome_usuario": nome, "fase": "conectado"})
+            _estado.update({
+                "token":              token,
+                "id_usuario":         id_u,
+                "nome_usuario":       nome,
+                "fase":               "conectado",
+                "lotacao_unidade_id":   u_id,
+                "lotacao_unidade_nome": u_nome,
+                "lotacao_setor_id":     s_id,
+                "lotacao_setor_nome":   s_nome,
+            })
     except Exception as e:
         with _lock:
             _estado["fase"] = "erro"
@@ -570,6 +611,32 @@ input[type=text]::placeholder{color:var(--muted)}
 /* ── Divider ── */
 .div{height:1px;background:var(--border);margin:8px 0}
 
+/* ── Autocomplete de setor ── */
+.ac-wrap{position:relative}
+.ac-drop{
+  position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:150;
+  background:#13132a;border:1px solid rgba(139,92,246,.25);border-radius:12px;
+  overflow:hidden;max-height:300px;overflow-y:auto;
+  box-shadow:0 12px 40px rgba(0,0,0,.6);display:none;
+}
+.ac-drop::-webkit-scrollbar{width:5px}
+.ac-drop::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+.ac-item{
+  padding:13px 16px;cursor:pointer;
+  border-bottom:1px solid rgba(255,255,255,.05);transition:background .1s;
+  display:flex;align-items:center;gap:12px;
+}
+.ac-item:last-child{border-bottom:none}
+.ac-item:hover{background:rgba(139,92,246,.16)}
+.ac-sigla{
+  color:var(--purple);font-weight:700;font-size:11.5px;
+  font-family:'JetBrains Mono',monospace;flex-shrink:0;min-width:70px;
+}
+.ac-info{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ac-nome{color:var(--text);font-size:13px;font-weight:500}
+.ac-unidade{color:var(--muted);font-size:12px;white-space:normal;line-height:1.3}
+.ac-empty{padding:14px 16px;color:var(--muted);font-size:13px;text-align:center}
+
 /* ── Botão Encerrar (fixo) ── */
 .btn-encerrar{
   position:fixed;top:18px;right:18px;z-index:200;
@@ -631,16 +698,29 @@ input[type=text]::placeholder{color:var(--muted)}
       </div>
     </div>
     <div class="field">
-      <label class="label">ID da Pasta</label>
-      <input type="text" id="inp-pasta" placeholder="ex: 125719">
-      <div class="hint">Você encontra o ID na URL da pasta no Sapiens</div>
+      <label class="label">Pasta</label>
+      <div class="ac-wrap">
+        <input type="text" id="inp-pasta-busca" placeholder="Clique para listar ou digite o nome da pasta..." autocomplete="off">
+        <input type="hidden" id="inp-pasta">
+        <div class="ac-drop" id="ac-drop-pasta"></div>
+      </div>
+      <div class="hint" id="pasta-hint">Conecte-se primeiro, depois selecione a pasta</div>
     </div>
     <div class="field">
       <label class="label">Setor de Destino</label>
-      <div class="inp-row">
-        <input type="text" id="inp-setor" value="62140" style="max-width:130px">
-        <span style="font-size:13px;color:var(--muted)">Protocolo DCJUD1</span>
+      <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Unidade</div>
+      <div class="ac-wrap" style="margin-bottom:12px">
+        <input type="text" id="inp-unidade-busca" placeholder="Pesquise a unidade..." autocomplete="off">
+        <input type="hidden" id="inp-unidade">
+        <div class="ac-drop" id="ac-drop-unidade"></div>
       </div>
+      <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px">Setor</div>
+      <div class="ac-wrap">
+        <input type="text" id="inp-setor-busca" placeholder="Selecione a unidade primeiro..." autocomplete="off" disabled>
+        <input type="hidden" id="inp-setor">
+        <div class="ac-drop" id="ac-drop"></div>
+      </div>
+      <div class="hint" id="setor-hint">Conecte-se ao Sapiens para pesquisar</div>
     </div>
   </div>
 
@@ -649,30 +729,18 @@ input[type=text]::placeholder{color:var(--muted)}
     <div class="step-hdr">
       <div class="step-num" id="sn3">3</div>
       <div>
-        <div class="step-title">Modo de Execução</div>
-        <div class="step-desc">Escolha como o robô deve operar</div>
+        <div class="step-title">Executar</div>
+        <div class="step-desc">Pronto — clique para iniciar a migração</div>
       </div>
     </div>
-    <div class="mode-card sel" id="m-dry" onclick="setModo('dryrun')">
-      <div class="mode-icon">🟡</div>
-      <div class="mode-text">
-        <div class="mode-name">Dry Run</div>
-        <div class="mode-sub">Simula tudo sem alterar nenhum processo — ideal para conferir antes</div>
-      </div>
-      <div class="radio"><div class="radio-inner"></div></div>
-    </div>
-    <div class="mode-card" id="m-real" onclick="setModo('real')">
-      <div class="mode-icon">🔴</div>
-      <div class="mode-text">
-        <div class="mode-name">Executar</div>
-        <div class="mode-sub">Altera o Setor Atual dos processos de fato no Sapiens</div>
-      </div>
-      <div class="radio"><div class="radio-inner"></div></div>
-    </div>
-    <div style="margin-top:20px">
+    <div style="margin-top:4px">
       <button class="btn btn-hero" id="btn-go" disabled onclick="iniciar()">
         🚀 &nbsp; Iniciar Migração
       </button>
+      <label style="display:flex;align-items:center;gap:9px;margin-top:14px;cursor:pointer;user-select:none;width:fit-content">
+        <input type="checkbox" id="chk-dryrun" style="accent-color:#fbbf24;width:15px;height:15px;flex-shrink:0">
+        <span style="font-size:12px;color:var(--muted)">🟡 Dry Run — simular sem alterar os processos</span>
+      </label>
     </div>
   </div>
 
@@ -741,16 +809,41 @@ window.onerror = function(msg, src, line, col, err) {
     });
 })();
 
-var _modo   = 'dryrun';
+var _modo   = 'real';   // padrão: executar de verdade
 var _cursor = 0;
 var _poll   = null;
 var _tpoll  = null;
 
-// ── Modo ──────────────────────────────────────────────────────
-function setModo(m) {
-  _modo = m;
-  document.getElementById('m-dry').classList.toggle('sel', m === 'dryrun');
-  document.getElementById('m-real').classList.toggle('sel', m === 'real');
+// ── Checkbox Dry Run ──────────────────────────────────────────
+document.getElementById('chk-dryrun').addEventListener('change', function() {
+  _modo = this.checked ? 'dryrun' : 'real';
+  var btn = document.getElementById('btn-go');
+  if (!btn.disabled) {
+    btn.innerHTML = this.checked
+      ? '🟡 &nbsp; Simular (Dry Run)'
+      : '🚀 &nbsp; Iniciar Migração';
+  }
+});
+
+// ── Pré-preencher campos com defaults (setor 62140 / EDCJUD1) ─
+function _preencherPadrao(r) {
+  if (!r.ok) return;
+  var hidU = document.getElementById('inp-unidade');
+  var inpU = document.getElementById('inp-unidade-busca');
+  var inpS = document.getElementById('inp-setor-busca');
+  var hidS = document.getElementById('inp-setor');
+  var hint = document.getElementById('setor-hint');
+  if (r.unidade_id) {
+    hidU.value = r.unidade_id;
+    inpU.value = (r.unidade_sigla ? r.unidade_sigla + '  —  ' : '') + r.unidade_nome;
+    inpS.disabled = false;
+    inpS.placeholder = 'Pesquise o setor desta unidade...';
+  }
+  if (r.setor_id) {
+    hidS.value = r.setor_id;
+    inpS.value = (r.setor_sigla ? r.setor_sigla + '  —  ' : '') + r.setor_nome;
+    hint.textContent = 'Setor padrão · ID: ' + r.setor_id + '  (altere se necessário)';
+  }
 }
 
 // ── Toast ─────────────────────────────────────────────────────
@@ -827,6 +920,7 @@ function verificarToken() {
       document.getElementById('c1').classList.add('is-done');
       document.getElementById('btn-go').disabled = false;
       toast('✅ Token capturado! Você está conectado.');
+      api('/defaults').then(function(d) { _preencherPadrao(d); });
     } else if (r.fase === 'erro') {
       clearInterval(_tpoll);
       var btn = document.getElementById('btn-token');
@@ -842,8 +936,8 @@ function verificarToken() {
 function iniciar() {
   var pasta = document.getElementById('inp-pasta').value.trim();
   var setor = document.getElementById('inp-setor').value.trim();
-  if (!pasta)                  { toast('⚠️ Informe o ID da Pasta'); return; }
-  if (!setor || isNaN(+setor)) { toast('⚠️ Setor destino inválido'); return; }
+  if (!pasta)                  { toast('⚠️ Selecione uma pasta na lista'); return; }
+  if (!setor || isNaN(+setor)) { toast('⚠️ Selecione um setor de destino na lista'); return; }
 
   var sec = document.getElementById('secao-log');
   sec.style.display = 'block';
@@ -904,6 +998,192 @@ function pollEstado() {
     }
   });
 }
+
+// ── Autocomplete de Setor (dois passos: Unidade → Setor) ──────
+(function() {
+  var inpU  = document.getElementById('inp-unidade-busca');
+  var hidU  = document.getElementById('inp-unidade');
+  var dropU = document.getElementById('ac-drop-unidade');
+  var inpS  = document.getElementById('inp-setor-busca');
+  var hidS  = document.getElementById('inp-setor');
+  var dropS = document.getElementById('ac-drop');
+  var hint  = document.getElementById('setor-hint');
+  var _tU, _tS;
+
+  function acItem(sigla, nome, sub) {
+    var item = document.createElement('div');
+    item.className = 'ac-item';
+    var subHtml = sub ? '<span class="ac-unidade">' + sub + '</span>' : '';
+    item.innerHTML =
+      '<span class="ac-sigla">' + (sigla || '') + '</span>' +
+      '<span class="ac-info"><span class="ac-nome">' + nome + '</span>' + subHtml + '</span>';
+    return item;
+  }
+
+  // ── Setor ──────────────────────────────────────────────────
+  function buscarSetores(q) {
+    var uid = hidU.value;
+    if (!uid) {
+      dropS.innerHTML = '<div class="ac-empty">Selecione a unidade primeiro</div>';
+      dropS.style.display = 'block'; return;
+    }
+    api('/buscar_setores', { q: q || '', unidade_id: uid }).then(function(r) {
+      dropS.innerHTML = '';
+      var lista = r.setores || [];
+      if (!lista.length) {
+        dropS.innerHTML = '<div class="ac-empty">Nenhum setor encontrado</div>';
+        dropS.style.display = 'block'; return;
+      }
+      lista.forEach(function(s) {
+        var item = acItem(s.sigla || ('#' + s.id), s.nome, '');
+        item.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          inpS.value = (s.sigla ? s.sigla + '  —  ' : '') + s.nome;
+          hidS.value = s.id;
+          hint.textContent = 'Setor selecionado · ID: ' + s.id;
+          dropS.style.display = 'none';
+        });
+        dropS.appendChild(item);
+      });
+      dropS.style.display = 'block';
+    });
+  }
+
+  inpS.addEventListener('focus', function() { buscarSetores(this.value.trim()); });
+  inpS.addEventListener('input', function() {
+    hidS.value = '';
+    clearTimeout(_tS);
+    var q = this.value.trim();
+    _tS = setTimeout(function() { buscarSetores(q); }, 350);
+  });
+  inpS.addEventListener('blur', function() {
+    setTimeout(function() { dropS.style.display = 'none'; }, 160);
+  });
+
+  // ── Unidade ────────────────────────────────────────────────
+  function buscarUnidades(q) {
+    api('/buscar_unidades', { q: q || '' }).then(function(r) {
+      dropU.innerHTML = '';
+      var lista = r.unidades || [];
+      if (!lista.length) {
+        dropU.innerHTML = '<div class="ac-empty">' + (r.erro || 'Nenhuma unidade encontrada') + '</div>';
+        dropU.style.display = 'block'; return;
+      }
+      lista.forEach(function(u) {
+        var item = acItem(u.sigla || ('#' + u.id), u.nome, '');
+        item.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          inpU.value = (u.sigla ? u.sigla + '  —  ' : '') + u.nome;
+          hidU.value = u.id;
+          dropU.style.display = 'none';
+          // Reset setor e já carrega lista desta unidade
+          inpS.value = ''; hidS.value = '';
+          inpS.disabled = false;
+          inpS.placeholder = 'Pesquise o setor desta unidade...';
+          hint.textContent = 'Agora selecione o setor';
+          buscarSetores('');
+        });
+        dropU.appendChild(item);
+      });
+      dropU.style.display = 'block';
+    });
+  }
+
+  inpU.addEventListener('focus', function() { buscarUnidades(this.value.trim()); });
+  inpU.addEventListener('input', function() {
+    hidU.value = ''; hidS.value = ''; inpS.value = '';
+    inpS.disabled = true;
+    inpS.placeholder = 'Selecione a unidade primeiro...';
+    clearTimeout(_tU);
+    var q = this.value.trim();
+    _tU = setTimeout(function() { buscarUnidades(q); }, 350);
+  });
+  inpU.addEventListener('blur', function() {
+    setTimeout(function() { dropU.style.display = 'none'; }, 160);
+  });
+
+  // ── Pré-preencher com lotação do usuário ao conectar ───────
+  window._preencherLotacao = function(r) {
+    if (r.lotacao_unidade_id) {
+      hidU.value = r.lotacao_unidade_id;
+      inpU.value = (r.lotacao_unidade_nome || r.lotacao_unidade_id);
+      inpS.disabled = false;
+      inpS.placeholder = 'Pesquise o setor desta unidade...';
+    }
+    if (r.lotacao_setor_id) {
+      hidS.value = r.lotacao_setor_id;
+      inpS.value = (r.lotacao_setor_nome || String(r.lotacao_setor_id));
+      hint.textContent = 'Setor padrão · ID: ' + r.lotacao_setor_id;
+    }
+  };
+})();
+
+// ── Autocomplete de Pasta ─────────────────────────────────────
+(function() {
+  var inp  = document.getElementById('inp-pasta-busca');
+  var hid  = document.getElementById('inp-pasta');
+  var drop = document.getElementById('ac-drop-pasta');
+  var hint = document.getElementById('pasta-hint');
+  var _t2;
+
+  function renderDropPasta(pastas) {
+    drop.innerHTML = '';
+    if (!pastas || pastas.length === 0) {
+      drop.innerHTML = '<div class="ac-empty">Nenhuma pasta encontrada</div>';
+      drop.style.display = 'block';
+      return;
+    }
+    pastas.forEach(function(pasta) {
+      var item = document.createElement('div');
+      item.className = 'ac-item';
+      var descHtml = pasta.descricao
+        ? '<span class="ac-unidade">' + pasta.descricao + '</span>'
+        : '';
+      item.innerHTML =
+        '<span class="ac-info"><span class="ac-nome">' + pasta.nome + '</span>' + descHtml + '</span>' +
+        '<span class="ac-sigla">#' + pasta.id + '</span>';
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        inp.value  = pasta.nome;
+        hid.value  = pasta.id;
+        hint.textContent = 'ID selecionado: ' + pasta.id;
+        drop.style.display = 'none';
+      });
+      drop.appendChild(item);
+    });
+    drop.style.display = 'block';
+  }
+
+  function buscarPastas(q) {
+    api('/buscar_pastas', { q: q || '' }).then(function(r) {
+      if (r.erro && !(r.pastas && r.pastas.length)) {
+        drop.innerHTML = '<div class="ac-empty">' + r.erro + '</div>';
+        drop.style.display = 'block';
+        return;
+      }
+      renderDropPasta(r.pastas || []);
+    });
+  }
+
+  var buscarDebounced = (function() {
+    return function(q) {
+      clearTimeout(_t2);
+      _t2 = setTimeout(function() { buscarPastas(q); }, 350);
+    };
+  })();
+
+  inp.addEventListener('focus', function() {
+    buscarPastas(this.value.trim());
+  });
+  inp.addEventListener('input', function() {
+    hid.value = '';
+    hint.textContent = 'Pesquisando...';
+    buscarDebounced(this.value.trim());
+  });
+  inp.addEventListener('blur', function() {
+    setTimeout(function() { drop.style.display = 'none'; }, 160);
+  });
+})();
 
 // ── Heartbeat (mantém servidor vivo enquanto browser está aberto) ──
 setInterval(function() { fetch('/ping').catch(function(){}); }, 5000);
@@ -976,12 +1256,16 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/estado":
             with _lock:
                 self._json({
-                    "fase":         _estado["fase"],
-                    "id_usuario":   _estado["id_usuario"],
-                    "nome_usuario": _estado["nome_usuario"],
-                    "log":          _estado["log"][:],
-                    "contadores":   _estado["contadores"].copy(),
-                    "erro":         _estado["erro"],
+                    "fase":                 _estado["fase"],
+                    "id_usuario":           _estado["id_usuario"],
+                    "nome_usuario":         _estado["nome_usuario"],
+                    "log":                  _estado["log"][:],
+                    "contadores":           _estado["contadores"].copy(),
+                    "erro":                 _estado["erro"],
+                    "lotacao_unidade_id":   _estado["lotacao_unidade_id"],
+                    "lotacao_unidade_nome": _estado["lotacao_unidade_nome"],
+                    "lotacao_setor_id":     _estado["lotacao_setor_id"],
+                    "lotacao_setor_nome":   _estado["lotacao_setor_nome"],
                 })
 
         elif path == "/iniciar":
@@ -1003,6 +1287,157 @@ class Handler(BaseHTTPRequestHandler):
                 daemon=True,
             ).start()
             self._json({"ok": True})
+
+        elif path == "/buscar_pastas":
+            q = p.get("q", "").strip()
+            with _lock:
+                token      = _estado["token"]
+                id_usuario = _estado["id_usuario"]
+            if not token:
+                self._json({"ok": False, "erro": "Conecte-se ao Sapiens primeiro", "pastas": []})
+                return
+            import requests as req
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+            try:
+                filtro_dict = {"criadoPor.id": f"eq:{id_usuario}"}
+                if len(q) >= 2:
+                    filtro_dict["nome"] = f"like:%{q}%"
+                url = (f"{BASE_URL}/v1/administrativo/folder"
+                       f"?limit=50&populate={urllib.parse.quote('[]')}"
+                       f"&where={urllib.parse.quote(json.dumps(filtro_dict))}")
+                r = req.get(url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    entities = data.get("entities", data if isinstance(data, list) else [])
+                    pastas = [
+                        {
+                            "id":        f.get("id"),
+                            "nome":      f.get("nome", ""),
+                            "descricao": f.get("descricao", "") or "",
+                        }
+                        for f in entities if f.get("id")
+                    ]
+                    self._json({"ok": True, "pastas": pastas})
+                else:
+                    self._json({"ok": True, "pastas": []})
+            except Exception as e:
+                self._json({"ok": False, "erro": str(e), "pastas": []})
+
+        elif path == "/defaults":
+            with _lock:
+                token = _estado["token"]
+            if not token:
+                self._json({"ok": False})
+                return
+            import requests as req
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+            try:
+                populate = urllib.parse.quote(json.dumps(["unidade"]))
+                r = req.get(
+                    f"{BASE_URL}/v1/administrativo/setor/62140?populate={populate}",
+                    headers=headers, timeout=10
+                )
+                if r.status_code == 200:
+                    s = r.json()
+                    u = s.get("unidade") or {}
+                    self._json({
+                        "ok":            True,
+                        "setor_id":      s.get("id", 62140),
+                        "setor_nome":    s.get("nome", ""),
+                        "setor_sigla":   s.get("sigla", ""),
+                        "unidade_id":    u.get("id"),
+                        "unidade_nome":  u.get("nome", ""),
+                        "unidade_sigla": u.get("sigla", ""),
+                    })
+                else:
+                    self._json({"ok": False})
+            except Exception:
+                self._json({"ok": False})
+
+        elif path == "/buscar_unidades":
+            # Não existe endpoint /unidade no Sapiens — extrai unidades únicas
+            # a partir dos setores (populate=["unidade"]), que já funciona.
+            q = p.get("q", "").strip()
+            with _lock:
+                token = _estado["token"]
+            if not token:
+                self._json({"ok": False, "erro": "Conecte-se ao Sapiens primeiro", "unidades": []})
+                return
+            import requests as req
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+            try:
+                filtro_dict = {}
+                if len(q) >= 2:
+                    filtro_dict["unidade.nome"] = f"like:%{q}%"
+                populate = urllib.parse.quote(json.dumps(["unidade"]))
+                url = (f"{BASE_URL}/v1/administrativo/setor"
+                       f"?limit=200&populate={populate}")
+                if filtro_dict:
+                    url += f"&where={urllib.parse.quote(json.dumps(filtro_dict))}"
+                r = req.get(url, headers=headers, timeout=15)
+                if r.status_code == 200:
+                    data     = r.json()
+                    entities = data.get("entities", data if isinstance(data, list) else [])
+                    seen, unidades = set(), []
+                    for s in entities:
+                        u   = s.get("unidade") or {}
+                        uid = u.get("id")
+                        if uid and uid not in seen:
+                            seen.add(uid)
+                            unidades.append({
+                                "id":    uid,
+                                "nome":  u.get("nome", ""),
+                                "sigla": u.get("sigla", ""),
+                            })
+                    unidades.sort(key=lambda x: x["nome"])
+                    self._json({"ok": True, "unidades": unidades})
+                else:
+                    self._json({"ok": True, "unidades": []})
+            except Exception as e:
+                self._json({"ok": False, "erro": str(e), "unidades": []})
+
+        elif path == "/buscar_setores":
+            q          = p.get("q", "").strip()
+            unidade_id = p.get("unidade_id", "").strip()
+            with _lock:
+                token = _estado["token"]
+            if not token:
+                self._json({"ok": False, "erro": "Conecte-se ao Sapiens primeiro", "setores": []})
+                return
+            if not unidade_id:
+                self._json({"ok": True, "setores": []})
+                return
+            import requests as req
+            headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+            try:
+                filtro_dict = {"unidade.id": f"eq:{unidade_id}"}
+                if len(q) >= 2:
+                    filtro_dict["nome"] = f"like:%{q}%"
+                populate = urllib.parse.quote(json.dumps(["unidade"]))
+                url = (f"{BASE_URL}/v1/administrativo/setor"
+                       f"?where={urllib.parse.quote(json.dumps(filtro_dict))}&limit=50"
+                       f"&populate={populate}")
+                r = req.get(url, headers=headers, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    entities = data.get("entities", data if isinstance(data, list) else [])
+                    setores = []
+                    for s in entities:
+                        if not s.get("id"):
+                            continue
+                        uni = s.get("unidade") or {}
+                        unidade_nome = uni.get("nome") or uni.get("sigla") or ""
+                        setores.append({
+                            "id":      s.get("id"),
+                            "nome":    s.get("nome", ""),
+                            "sigla":   s.get("sigla", ""),
+                            "unidade": unidade_nome,
+                        })
+                    self._json({"ok": True, "setores": setores})
+                else:
+                    self._json({"ok": True, "setores": []})
+            except Exception as e:
+                self._json({"ok": False, "erro": str(e), "setores": []})
 
         elif path == "/ping":
             global _ultimo_ping
