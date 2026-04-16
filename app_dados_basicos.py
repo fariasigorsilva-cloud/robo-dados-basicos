@@ -239,11 +239,14 @@ def _thread_capturar_token():
     try:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from webdriver_manager.chrome import ChromeDriverManager
         opts = Options()
         opts.add_experimental_option("debuggerAddress", f"127.0.0.1:{PORTA_DEBUG}")
         with _lock:
             _estado["fase"] = "capturando"
-        driver = webdriver.Chrome(options=opts)
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=opts)
         _driver = driver
         token = None
         for _ in range(6):

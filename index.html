@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robô Dados Básicos · AGU</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f1a;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 16px;
+    }
+
+    .card {
+      background: #1a1a2e;
+      border-radius: 16px;
+      max-width: 600px;
+      width: 100%;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+
+    .card-header {
+      background: #16213e;
+      padding: 28px 32px;
+      border-bottom: 1px solid #0f3460;
+    }
+
+    .card-header h1 {
+      font-size: 20px;
+      color: #e94560;
+      margin-bottom: 4px;
+    }
+
+    .card-header p {
+      font-size: 13px;
+      color: #888;
+    }
+
+    .card-body { padding: 28px 32px; }
+
+    .steps { list-style: none; counter-reset: step; }
+
+    .steps li {
+      counter-increment: step;
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+      align-items: flex-start;
+    }
+
+    .steps li::before {
+      content: counter(step);
+      min-width: 28px;
+      height: 28px;
+      background: #e94560;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .steps .step-text { padding-top: 4px; }
+    .steps .step-text strong { display: block; margin-bottom: 4px; font-size: 14px; }
+    .steps .step-text span { font-size: 13px; color: #aaa; line-height: 1.6; }
+
+    /* Bookmarklet link */
+    .bm-wrap {
+      background: #0f3460;
+      border: 2px dashed #e94560;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      margin: 8px 0 4px;
+    }
+
+    .bm-link {
+      display: inline-block;
+      background: #e94560;
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .bm-link:active { cursor: grabbing; }
+
+    .bm-hint {
+      font-size: 12px;
+      color: #888;
+      margin-top: 10px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #0f3460;
+      margin: 24px 0;
+    }
+
+    .copy-wrap {
+      display: flex;
+      gap: 8px;
+    }
+
+    .copy-input {
+      flex: 1;
+      background: #0a0a1a;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      color: #888;
+      padding: 8px 10px;
+      font-size: 11px;
+      font-family: monospace;
+      outline: none;
+    }
+
+    .copy-btn {
+      background: #0f3460;
+      color: #e0e0e0;
+      border: 1px solid #1a4a8a;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .copy-btn:hover { background: #16213e; }
+
+    .alert {
+      background: #1a2a1a;
+      border: 1px solid #2a5a2a;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #aaa;
+      line-height: 1.6;
+      margin-top: 20px;
+    }
+
+    .alert strong { color: #6fcf6f; }
+
+    .footer {
+      font-size: 11px;
+      color: #444;
+      text-align: center;
+      padding: 16px 32px;
+      border-top: 1px solid #0f3460;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="card-header">
+      <h1>🔄 Robô Dados Básicos · AGU</h1>
+      <p>Migração de Setor Atual · Sapiens — instalação via bookmarklet</p>
+    </div>
+
+    <div class="card-body">
+      <ol class="steps">
+        <li>
+          <div class="step-text">
+            <strong>Adicione o bookmarklet à barra de favoritos</strong>
+            <span>Arraste o botão abaixo para a barra de favoritos do Chrome.</span>
+            <div class="bm-wrap">
+              <a class="bm-link" id="bm" href="">🔄 Robô Migração Setor</a>
+              <div class="bm-hint">⬆ arraste este botão para a barra de favoritos</div>
+            </div>
+          </div>
+        </li>
+
+        <li>
+          <div class="step-text">
+            <strong>Acesse o Sapiens e faça login</strong>
+            <span>Entre normalmente em
+              <a href="https://supersapiens.agu.gov.br" target="_blank" style="color:#e94560">supersapiens.agu.gov.br</a>
+              com suas credenciais da AGU.
+            </span>
+          </div>
+        </li>
+
+        <li>
+          <div class="step-text">
+            <strong>Clique no favorito</strong>
+            <span>Com o Sapiens aberto, clique em "🔄 Robô Migração Setor" na barra de favoritos.
+            O painel de migração abrirá automaticamente.</span>
+          </div>
+        </li>
+
+        <li>
+          <div class="step-text">
+            <strong>Configure e execute</strong>
+            <span>Selecione o setor destino e a pasta, depois clique em <strong style="color:#e94560">Executar Migração</strong>.
+            O setor padrão já vem preenchido (EDCJUD1).</span>
+          </div>
+        </li>
+      </ol>
+
+      <hr class="divider">
+
+      <p style="font-size:13px;color:#aaa;margin-bottom:10px">
+        Não conseguiu arrastar? Cole manualmente na barra de endereços:
+      </p>
+      <div class="copy-wrap">
+        <input class="copy-input" id="bm-text" readonly value="">
+        <button class="copy-btn" onclick="copyBM()">Copiar</button>
+      </div>
+
+      <div class="alert">
+        <strong>✅ Sem instalação, sem .exe</strong><br>
+        O bookmarklet roda 100% dentro do Sapiens, sem precisar instalar nenhum programa.
+        O token é lido diretamente da sessão aberta — nenhuma credencial é enviada para fora da AGU.
+      </div>
+    </div>
+
+    <div class="footer">Projeto em andamento · Desenvolvimento: Igor Farias</div>
+  </div>
+
+  <script>
+    // Gera o href do bookmarklet dinamicamente
+    var base = window.location.origin + window.location.pathname.replace('index.html','');
+    var src  = base + 'bookmarklet.js';
+    var code = '(function(){var s=document.createElement(\'script\');s.src=\'' + src + '?_=\'+Date.now();document.head.appendChild(s);})();';
+    var bm   = 'javascript:' + code;
+
+    document.getElementById('bm').href     = bm;
+    document.getElementById('bm-text').value = bm;
+
+    function copyBM() {
+      var inp = document.getElementById('bm-text');
+      inp.select();
+      document.execCommand('copy');
+      var btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copiado!';
+      setTimeout(function(){ btn.textContent = 'Copiar'; }, 2000);
+    }
+  </script>
+</body>
+</html>
