@@ -34,7 +34,6 @@
   // ── Token ───────────────────────────────────────────────────────
   function getToken() {
     const fns = [
-      () => localStorage.getItem('token'),  // Novo Sapiens (token direto)
       () => localStorage.getItem('accessToken'),
       () => JSON.parse(localStorage.getItem('auth')).accessToken,
       () => JSON.parse(localStorage.getItem('token')).accessToken,

@@ -47,7 +47,6 @@ _CAMPOS_RELACIONAIS = {
 }
 
 _TOKEN_SCRIPTS = [
-    "return localStorage.getItem('token');",  # Novo Sapiens (token direto)
     "return localStorage.getItem('accessToken');",
     "try { return JSON.parse(localStorage.getItem('auth')).accessToken; } catch(e){ return null; }",
     "try { return JSON.parse(localStorage.getItem('token')).accessToken; } catch(e){ return null; }",
