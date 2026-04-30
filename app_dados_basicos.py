@@ -127,14 +127,45 @@ def _capturar_token_driver(driver):
         from selenium.common.exceptions import WebDriverException
     except ImportError:
         return None
-    for script in _TOKEN_SCRIPTS:
+
+    def _tentar_scripts():
+        for script in _TOKEN_SCRIPTS:
+            try:
+                t = driver.execute_script(script)
+                if t and isinstance(t, str) and t.startswith("eyJ"):
+                    return t
+            except WebDriverException:
+                continue
+        return None
+
+    # 1. Tenta primeiro nas abas do Sapiens
+    try:
+        handles = driver.window_handles
+    except Exception:
+        handles = []
+
+    for handle in handles:
         try:
-            t = driver.execute_script(script)
-            if t and isinstance(t, str) and t.startswith("eyJ"):
-                return t
-        except WebDriverException:
+            driver.switch_to.window(handle)
+            if "supersapiens.agu.gov.br" in (driver.current_url or ""):
+                t = _tentar_scripts()
+                if t:
+                    return t
+        except Exception:
             continue
-    return None
+
+    # 2. Fallback: tenta em todas as abas sem filtrar URL
+    for handle in handles:
+        try:
+            driver.switch_to.window(handle)
+            t = _tentar_scripts()
+            if t:
+                return t
+        except Exception:
+            continue
+
+    # 3. Fallback final: aba atual (comportamento original)
+    return _tentar_scripts()
 
 def _decodificar_jwt(token: str) -> dict:
     try:
